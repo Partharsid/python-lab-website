@@ -1966,13 +1966,13 @@ for dept, info in groups.items():
 print("\\n=== Sort by Salary (Ascending) ===")
 indices = sorted(range(len(data['Salary'])), key=lambda i: data['Salary'][i])
 for i in indices:
-    print(f"  {data['Name'][i]:10}: ${data['Salary'][i]}")
+    print(f"  {data['Name'][i]:10}: Rs.{data['Salary'][i]}")
 
 # Sort by Salary (descending)
 print("\\n=== Sort by Salary (Descending) ===")
 indices = sorted(range(len(data['Salary'])), key=lambda i: data['Salary'][i], reverse=True)
 for i in indices:
-    print(f"  {data['Name'][i]:10}: ${data['Salary'][i]}")`,
+    print(f"  {data['Name'][i]:10}: Rs.{data['Salary'][i]}")`,
                 hasVisualization: false
             }
         ]

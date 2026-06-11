@@ -170,6 +170,19 @@ body {
     box-shadow: 0 4px 12px rgba(108,92,231,0.3);
 }
 
+.nav-num {
+    width: 20px;
+    text-align: center;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--accent-light);
+    flex-shrink: 0;
+}
+
+.nav-item.active .nav-num {
+    color: white;
+}
+
 .nav-item i {
     width: 20px;
     text-align: center;
