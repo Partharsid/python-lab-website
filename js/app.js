@@ -1,8 +1,5 @@
 // Main Application
-document.addEventListener('DOMContentLoaded', () => {
-    const app = new App();
-    app.init();
-});
+let app;
 
 class App {
     constructor() {
@@ -17,8 +14,8 @@ class App {
 
     init() {
         this.bindEvents();
-        this.loadTask('home');
         this.initTheme();
+        this.loadTask('home');
     }
 
     bindEvents() {
@@ -62,6 +59,14 @@ class App {
                 document.getElementById('vizModal').classList.remove('active');
             }
         });
+
+        // Close sidebar on Escape
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                this.closeSidebar();
+                document.getElementById('vizModal').classList.remove('active');
+            }
+        });
     }
 
     initTheme() {
@@ -80,7 +85,9 @@ class App {
 
     updateThemeIcon(theme) {
         const icon = document.querySelector('#themeToggle i');
-        icon.className = theme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+        if (icon) {
+            icon.className = theme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+        }
     }
 
     closeSidebar() {
@@ -104,10 +111,15 @@ class App {
 
         this.currentTask = taskId;
 
-        if (taskId === 'home') {
-            this.renderHome();
-        } else {
-            this.renderTask(taskId);
+        try {
+            if (taskId === 'home') {
+                this.renderHome();
+            } else {
+                this.renderTask(taskId);
+            }
+        } catch (err) {
+            console.error('Error loading task:', err);
+            this.contentArea.innerHTML = `<div style="padding:40px;color:var(--danger);">Error loading task: ${err.message}</div>`;
         }
     }
 
@@ -137,7 +149,7 @@ class App {
                     <div class="label">Topics</div>
                 </div>
                 <div class="stat-card">
-                    <div class="number">∞</div>
+                    <div class="number">&infin;</div>
                     <div class="label">Practice</div>
                 </div>
             </div>
@@ -227,48 +239,60 @@ class App {
 
         this.contentArea.innerHTML = html;
 
-        // Initialize CodeMirror editors
-        task.questions.forEach((q, idx) => {
-            const editorId = `editor-${taskId}-${idx}`;
-            const editorEl = document.getElementById(editorId);
-            if (editorEl) {
-                const editor = CodeMirror(editorEl, {
-                    value: q.code,
-                    mode: 'python',
-                    theme: 'dracula',
-                    lineNumbers: true,
-                    matchBrackets: true,
-                    autoCloseBrackets: true,
-                    indentUnit: 4,
-                    tabSize: 4,
-                    indentWithTabs: false,
-                    lineWrapping: true,
-                    viewportMargin: Infinity
-                });
-                this.editors[`${taskId}-${idx}`] = editor;
+        // Initialize CodeMirror editors after DOM is updated
+        requestAnimationFrame(() => {
+            task.questions.forEach((q, idx) => {
+                const editorId = `editor-${taskId}-${idx}`;
+                const editorEl = document.getElementById(editorId);
+                if (editorEl && typeof CodeMirror !== 'undefined') {
+                    const editor = CodeMirror(editorEl, {
+                        value: q.code,
+                        mode: 'python',
+                        theme: 'dracula',
+                        lineNumbers: true,
+                        matchBrackets: true,
+                        autoCloseBrackets: true,
+                        indentUnit: 4,
+                        tabSize: 4,
+                        indentWithTabs: false,
+                        lineWrapping: true,
+                        viewportMargin: Infinity
+                    });
+                    this.editors[`${taskId}-${idx}`] = editor;
+                    editor._originalCode = q.code;
+                }
+            });
 
-                // Store original code for reset
-                editor._originalCode = q.code;
-            }
+            // Auto-open first question
+            this.openQuestion(taskId, 0);
         });
-
-        // Auto-open first question
-        this.toggleQuestion(taskId, 0);
 
         // Pre-load Pyodide in background
         setTimeout(() => {
-            pyodideRunner.load();
-        }, 1000);
+            if (typeof pyodideRunner !== 'undefined') {
+                pyodideRunner.load();
+            }
+        }, 2000);
+    }
+
+    openQuestion(taskId, idx) {
+        const card = document.getElementById(`qcard-${taskId}-${idx}`);
+        if (card && !card.classList.contains('open')) {
+            card.classList.add('open');
+            const editor = this.editors[`${taskId}-${idx}`];
+            if (editor) {
+                setTimeout(() => editor.refresh(), 100);
+            }
+        }
     }
 
     toggleQuestion(taskId, idx) {
         const card = document.getElementById(`qcard-${taskId}-${idx}`);
         if (card) {
             card.classList.toggle('open');
-            // Refresh editor when opened
             const editor = this.editors[`${taskId}-${idx}`];
             if (editor && card.classList.contains('open')) {
-                setTimeout(() => editor.refresh(), 50);
+                setTimeout(() => editor.refresh(), 100);
             }
         }
     }
@@ -289,23 +313,30 @@ class App {
         outputEl.className = 'output-body';
         outputEl.textContent = 'Loading Python interpreter...';
 
-        // Detect input() calls and show input fields
-        const inputMatches = code.match(/input\s*\(\s*['"]([^'"]*)['"]\s*\)/g);
-        let inputValues = [];
+        try {
+            // Detect input() calls and collect values
+            const inputMatches = code.match(/input\s*\(\s*['"]([^'"]*)['"]\s*\)/g);
+            let inputValues = [];
 
-        if (inputMatches && inputMatches.length > 0) {
-            inputValues = await this.collectInputs(inputMatches);
-        }
+            if (inputMatches && inputMatches.length > 0) {
+                inputValues = await this.collectInputs(inputMatches, outputEl);
+            }
 
-        // Run code
-        const result = await pyodideRunner.run(code, inputValues);
+            // Run code
+            const result = await pyodideRunner.run(code, inputValues);
 
-        // Show output
-        outputEl.textContent = result.output;
-        if (result.error) {
+            // Show output
+            outputEl.textContent = result.output;
+            if (result.error) {
+                outputEl.classList.add('error');
+                outputEl.classList.remove('success');
+            } else {
+                outputEl.classList.add('success');
+                outputEl.classList.remove('error');
+            }
+        } catch (err) {
+            outputEl.textContent = 'Error: ' + err.message;
             outputEl.classList.add('error');
-        } else {
-            outputEl.classList.add('success');
         }
 
         // Reset button
@@ -313,7 +344,7 @@ class App {
         btn.disabled = false;
     }
 
-    collectInputs(inputMatches) {
+    collectInputs(inputMatches, outputEl) {
         return new Promise((resolve) => {
             const values = [];
             let currentIdx = 0;
@@ -323,7 +354,6 @@ class App {
                 const promptText = match.match(/input\s*\(\s*['"]([^'"]*)['"]\s*\)/);
                 const label = promptText ? promptText[1] : 'Enter value:';
 
-                // Create temporary input UI
                 const inputDiv = document.createElement('div');
                 inputDiv.className = 'input-prompt';
                 inputDiv.innerHTML = `
@@ -332,10 +362,7 @@ class App {
                     <button class="btn btn-run" style="margin-top:8px;padding:6px 14px;" id="temp-submit-${currentIdx}">Submit</button>
                 `;
 
-                const outputContainer = document.querySelector('.output-container[style*="block"]');
-                if (outputContainer) {
-                    outputContainer.querySelector('.output-body').appendChild(inputDiv);
-                }
+                outputEl.appendChild(inputDiv);
 
                 const input = document.getElementById(`temp-input-${currentIdx}`);
                 const submit = document.getElementById(`temp-submit-${currentIdx}`);
@@ -380,15 +407,16 @@ class App {
 
         if (vizContainer.style.display === 'none') {
             vizContainer.style.display = 'block';
-            pyodideRunner.visualize('', question.vizType, canvasId);
+            if (typeof pyodideRunner !== 'undefined') {
+                pyodideRunner.visualize('', question.vizType, canvasId);
+            }
         } else {
             vizContainer.style.display = 'none';
         }
     }
 }
 
-// Global reference
-let app;
+// Initialize app when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
     app = new App();
     app.init();
